@@ -1,7 +1,9 @@
 #define MIN_VOLTAGE       10.8
-#define RED_VOLTAGE       11.5
-#define YELLOW_VOLTAGE    11.9
-#define MAX_VOLTAGE       14
+#define E2_VOLTAGE        11.2
+#define E3_VOLTAGE        11.6
+#define E4_VOLTAGE        12.2
+#define E5_VOLTAGE        12.6
+#define MAX_VOLTAGE       14.1
 
 #define CHARGE_CURRENT    0.21
 #define MIN_CURRENT       0.01
@@ -11,7 +13,6 @@
 #define PIN_POWER_SWITCH  8
 
 #define PIN_RELAIS_AMP    4
-//#define PIN_RELAIS_USB    6
 #define PIN_SYS_POWER_ON  7
 #define PIN_PWM_BH        3
 #define PIN_PWM_BL        5
@@ -24,6 +25,7 @@
 #define PIN_LED_R         9
 #define PIN_LED_G         10
 #define PIN_LED_B         11
+#define PIN_LED_Y         12
 
 
 #define MEAS_AVG_COUNT    5
@@ -37,14 +39,13 @@
 
 void setup() {
   uint8_t i = 0;
-  
+
   pinMode(PIN_SYS_POWER_ON, OUTPUT);
   digitalWrite(PIN_SYS_POWER_ON, HIGH);
 
   Serial.begin(9600);
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(PIN_RELAIS_AMP, OUTPUT);
-//  pinMode(PIN_RELAIS_USB, OUTPUT);
   pinMode(PIN_POWER_SWITCH, INPUT_PULLUP);
 
   analogReference(INTERNAL);
@@ -63,6 +64,7 @@ uint16_t i = 0;
 uint8_t j = 0;
 
 uint16_t noSupplyCounter = 0;
+uint16_t supplyCounter = 0;
 
 uint8_t bhCurrSp = 0;
 uint8_t blCurrSp = 0;
@@ -71,7 +73,7 @@ float analogReadAverage(uint8_t pin) {
   float res = 0;
   uint8_t i = 0;
   for(i=0; i<MEAS_AVG_COUNT; i++) {
-    res += analogRead(pin );
+    res += analogRead(pin);
   }
   return res/MEAS_AVG_COUNT;
 }
@@ -104,16 +106,19 @@ void loop() {
   // If power switch is turned off, turn amp off, else turn it on
   if(digitalRead(PIN_POWER_SWITCH)) {
     digitalWrite(PIN_RELAIS_AMP, LOW);
-    //digitalWrite(PIN_RELAIS_USB, LOW);
   }
   else {
     digitalWrite(PIN_RELAIS_AMP, HIGH);
-    //digitalWrite(PIN_RELAIS_USB, HIGH);
   }
 
   // charging or...
   if(digitalRead(PIN_AC_INPUT)) {
+
+    // update counters
     noSupplyCounter = 0;
+    if(supplyCounter < 10000) {
+      supplyCounter++;
+    }
 
     if(measureVoltH() < MAX_VOLTAGE && measureCurrH() < CHARGE_CURRENT) {
       if(bhCurrSp < 255) {
@@ -125,7 +130,7 @@ void loop() {
         bhCurrSp -= 1;
       }
     }
-    
+
     if(measureVoltL() < MAX_VOLTAGE && measureCurrL() < CHARGE_CURRENT) {
       if(blCurrSp < 255) {
         blCurrSp += 1;
@@ -136,75 +141,91 @@ void loop() {
         blCurrSp -= 1;
       }
     }
-    
+
     if(measureCurrH() < MIN_CURRENT + CURRENT_MARGIN
       && measureCurrL() < MIN_CURRENT + CURRENT_MARGIN)
     {
+      // L3 erhaltungsladung
       analogWrite(PIN_LED_R, 0);
       analogWrite(PIN_LED_G, 255);
       analogWrite(PIN_LED_B, 0);
+      analogWrite(PIN_LED_Y, 0);
     }
     else if (measureCurrH() < CHARGE_CURRENT - CURRENT_MARGIN
-      && measureCurrL() < CHARGE_CURRENT - CURRENT_MARGIN) 
+      && measureCurrL() < CHARGE_CURRENT - CURRENT_MARGIN)
     {
-      if(i % 200 < 133) {
-        analogWrite(PIN_LED_R, 0);
-        analogWrite(PIN_LED_G, 255);
-        analogWrite(PIN_LED_B, 0);
-      }
-      else {
-        analogWrite(PIN_LED_R, 0);
-        analogWrite(PIN_LED_G, 0);
-        analogWrite(PIN_LED_B, 255);
-      }
+      // L2 Konstantspannungsladung
+      analogWrite(PIN_LED_R, 0);
+      analogWrite(PIN_LED_G, 0);
+      analogWrite(PIN_LED_B, 255);
+      analogWrite(PIN_LED_Y, 0);
     }
     else {
-      if(i % 200 < 133) {
-        analogWrite(PIN_LED_R, 255);
-        analogWrite(PIN_LED_G, 0);
-        analogWrite(PIN_LED_B, 0);
-      }
-    else {
-        analogWrite(PIN_LED_R, 0);
-        analogWrite(PIN_LED_G, 0);
-        analogWrite(PIN_LED_B, 255);
-      }
+      // L1 Konstantstromladung
+      analogWrite(PIN_LED_R, 0);
+      analogWrite(PIN_LED_G, 0);
+      analogWrite(PIN_LED_B, 255);
+      analogWrite(PIN_LED_Y, 255);
     }
   }
-  // ..discharging opertation.
+  // ..discharging operation.
   else {
     blCurrSp = 0;
     bhCurrSp = 0;
-    
+
+    // If AC/DC was connected and now disconnected, force shutdown
+    if(supplyCounter > 200) {
+      digitalWrite(PIN_SYS_POWER_ON, LOW);
+      delay(5000);
+    }
+
+    // update counters
+    supplyCounter = 0;
     if(noSupplyCounter < 10000) {
       noSupplyCounter++;
     }
 
-    if(measureVoltH() > YELLOW_VOLTAGE && measureVoltL() > YELLOW_VOLTAGE)
+    if(measureVoltH() > E5_VOLTAGE && measureVoltL() > E5_VOLTAGE)
     {
+      // E5
       analogWrite(PIN_LED_R, 0);
       analogWrite(PIN_LED_G, 255);
       analogWrite(PIN_LED_B, 0);
+      analogWrite(PIN_LED_Y, 0);
     }
-    else if(measureVoltH() > RED_VOLTAGE && measureVoltL() > RED_VOLTAGE)
+    else if(measureVoltH() > E4_VOLTAGE && measureVoltL() > E4_VOLTAGE)
     {
-      if(i % 200 < 100) {
-        analogWrite(PIN_LED_R, 255);
-        analogWrite(PIN_LED_G, 0);
-        analogWrite(PIN_LED_B, 0);
-      }
-      else {
-        analogWrite(PIN_LED_R, 0);
-        analogWrite(PIN_LED_G, 255);
-        analogWrite(PIN_LED_B, 0);
-      }
+      // E4
+      analogWrite(PIN_LED_R, 0);
+      analogWrite(PIN_LED_G, 255);
+      analogWrite(PIN_LED_B, 0);
+      analogWrite(PIN_LED_Y, 255);
     }
-    else if(measureVoltH() > MIN_VOLTAGE && measureVoltL() > MIN_VOLTAGE)
+    else if(measureVoltH() > E3_VOLTAGE && measureVoltL() > E3_VOLTAGE)
     {
+      // E3
+      analogWrite(PIN_LED_R, 0);
+      analogWrite(PIN_LED_G, 0);
+      analogWrite(PIN_LED_B, 0);
+      analogWrite(PIN_LED_Y, 255);
+    }
+    else if(measureVoltH() > E2_VOLTAGE && measureVoltL() > E2_VOLTAGE)
+    {
+      // E2
       analogWrite(PIN_LED_R, 255);
       analogWrite(PIN_LED_G, 0);
       analogWrite(PIN_LED_B, 0);
+      analogWrite(PIN_LED_Y, 255);
     }
+    else if(measureVoltH() > MIN_VOLTAGE && measureVoltL() > MIN_VOLTAGE)
+    {
+      // E1
+      analogWrite(PIN_LED_R, 255);
+      analogWrite(PIN_LED_G, 0);
+      analogWrite(PIN_LED_B, 0);
+      analogWrite(PIN_LED_Y, 0);
+    }
+
     // only shut down if no AC/DC was present within the last 10s
     else if(noSupplyCounter > 2000) {
       analogWrite(PIN_LED_R, 0);
@@ -217,7 +238,7 @@ void loop() {
         delay(300);
         analogWrite(PIN_LED_R, 0);
       }
-      
+
       digitalWrite(PIN_SYS_POWER_ON, LOW);
       delay(5000);
     }
@@ -229,12 +250,12 @@ void loop() {
   if(i % 100 == 0) {
     printAll();
   }
-  
+
   delay(5);
   i++;
 }
 
-  
+
 void printAll() {
   Serial.print("--------------------------------\n");
   Serial.print("AC in: ");
@@ -252,7 +273,7 @@ void printAll() {
   Serial.print(measureVoltH());
   Serial.print("V (");
   Serial.print(analogRead(PIN_VOLT_BH));
-  
+
   Serial.print(")\n\nCurrent (L): ");
   Serial.print(measureCurrL());
   Serial.print("A (");
@@ -265,4 +286,3 @@ void printAll() {
   Serial.print(analogRead(PIN_VOLT_BL));
   Serial.print(")\n");
 }
-
