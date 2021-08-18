@@ -1,3 +1,5 @@
+// voltage and current thresholds
+
 #define MIN_VOLTAGE       10.8
 #define E2_VOLTAGE        11.2
 #define E3_VOLTAGE        11.6
@@ -8,6 +10,28 @@
 #define CHARGE_CURRENT    0.21
 #define MIN_CURRENT       0.01
 #define CURRENT_MARGIN    0.03
+
+
+// led brightnesses
+
+#define LED_R_BRIGHTNESS  255
+#define LED_G_BRIGHTNESS  255
+#define LED_B_BRIGHTNESS  255
+#define LED_Y_BRIGHTNESS  255
+
+
+// measurement configuration and calibration
+
+#define MEAS_AVG_COUNT    5
+
+#define VOLT_CAL_BH       (12.67/541)
+#define VOLT_CAL_BL       (12.98/530)
+
+#define AMP_CAL_BH        ((0.218-0.178)/(61-22))
+#define AMP_CAL_BL        ((0.205-0.076)/(187-64))
+
+
+// pin config
 
 #define PIN_AC_INPUT      2
 #define PIN_POWER_SWITCH  8
@@ -28,15 +52,16 @@
 #define PIN_LED_Y         12
 
 
-#define MEAS_AVG_COUNT    5
+// makro to set leds
 
-#define VOLT_CAL_BH       (12.67/541)
-#define VOLT_CAL_BL       (12.98/530)
+#define setLights(r, g, b, y) { \
+  analogWrite(PIN_LED_R, LED_R_BRIGHTNESS * r); \
+  analogWrite(PIN_LED_G, LED_G_BRIGHTNESS * g); \
+  analogWrite(PIN_LED_B, LED_B_BRIGHTNESS * b); \
+  analogWrite(PIN_LED_Y, LED_Y_BRIGHTNESS * y); \
+}
 
-#define AMP_CAL_BH        ((0.218-0.178)/(61-22))
-#define AMP_CAL_BL        ((0.205-0.076)/(187-64))
-
-
+// setup pins, communication and ADC
 void setup() {
   uint8_t i = 0;
 
@@ -60,15 +85,22 @@ void setup() {
   }
 }
 
+// mainloop counter
 uint16_t i = 0;
+
+// generic loop variable
 uint8_t j = 0;
 
+// increment with ~200 Hz when supply is (not) connected,
+// stay at zero otherwise
 uint16_t noSupplyCounter = 0;
 uint16_t supplyCounter = 0;
 
+// high/low side current source setpoints
 uint8_t bhCurrSp = 0;
 uint8_t blCurrSp = 0;
 
+// read averaged value of analog input pin
 float analogReadAverage(uint8_t pin) {
   float res = 0;
   uint8_t i = 0;
@@ -78,24 +110,30 @@ float analogReadAverage(uint8_t pin) {
   return res/MEAS_AVG_COUNT;
 }
 
+// return high side battery voltage
 float measureVoltH() {
   return analogReadAverage(PIN_VOLT_BH)*VOLT_CAL_BH
       - measureCurrH() * 0.1;
 }
 
+// return low side battery voltage
 float measureVoltL() {
   return analogReadAverage(PIN_VOLT_BL)*VOLT_CAL_BL
       - measureCurrL() * 0.1;
 }
 
+// return high side battery charge current (cannot measure discharging)
 float measureCurrH() {
   return analogReadAverage(PIN_CURR_BH)*AMP_CAL_BH;
 }
 
+// return high side battery charge current (cannot measure discharging)
 float measureCurrL() {
   return analogReadAverage(PIN_CURR_BL)*AMP_CAL_BL;
 }
 
+
+// mainloop
 void loop() {
   // If neither AC power nor power switch active, turn device off
   if(!digitalRead(PIN_AC_INPUT) && digitalRead(PIN_POWER_SWITCH)) {
@@ -146,26 +184,17 @@ void loop() {
       && measureCurrL() < MIN_CURRENT + CURRENT_MARGIN)
     {
       // L3 erhaltungsladung
-      analogWrite(PIN_LED_R, 0);
-      analogWrite(PIN_LED_G, 255);
-      analogWrite(PIN_LED_B, 0);
-      analogWrite(PIN_LED_Y, 0);
+      setLights(0, 1, 0, 0);
     }
     else if (measureCurrH() < CHARGE_CURRENT - CURRENT_MARGIN
       && measureCurrL() < CHARGE_CURRENT - CURRENT_MARGIN)
     {
       // L2 Konstantspannungsladung
-      analogWrite(PIN_LED_R, 0);
-      analogWrite(PIN_LED_G, 0);
-      analogWrite(PIN_LED_B, 255);
-      analogWrite(PIN_LED_Y, 0);
+      setLights(0, 0, 1, 0);
     }
     else {
       // L1 Konstantstromladung
-      analogWrite(PIN_LED_R, 0);
-      analogWrite(PIN_LED_G, 0);
-      analogWrite(PIN_LED_B, 255);
-      analogWrite(PIN_LED_Y, 255);
+      setLights(0, 0, 1, 1);
     }
   }
   // ..discharging operation.
@@ -188,55 +217,38 @@ void loop() {
     if(measureVoltH() > E5_VOLTAGE && measureVoltL() > E5_VOLTAGE)
     {
       // E5
-      analogWrite(PIN_LED_R, 0);
-      analogWrite(PIN_LED_G, 255);
-      analogWrite(PIN_LED_B, 0);
-      analogWrite(PIN_LED_Y, 0);
+      setLights(0, 1, 0, 0);
     }
     else if(measureVoltH() > E4_VOLTAGE && measureVoltL() > E4_VOLTAGE)
     {
       // E4
-      analogWrite(PIN_LED_R, 0);
-      analogWrite(PIN_LED_G, 255);
-      analogWrite(PIN_LED_B, 0);
-      analogWrite(PIN_LED_Y, 255);
+      setLights(0, 1, 0, 1);
     }
     else if(measureVoltH() > E3_VOLTAGE && measureVoltL() > E3_VOLTAGE)
     {
       // E3
-      analogWrite(PIN_LED_R, 0);
-      analogWrite(PIN_LED_G, 0);
-      analogWrite(PIN_LED_B, 0);
-      analogWrite(PIN_LED_Y, 255);
+      setLights(0, 0, 0, 1);
     }
     else if(measureVoltH() > E2_VOLTAGE && measureVoltL() > E2_VOLTAGE)
     {
       // E2
-      analogWrite(PIN_LED_R, 255);
-      analogWrite(PIN_LED_G, 0);
-      analogWrite(PIN_LED_B, 0);
-      analogWrite(PIN_LED_Y, 255);
+      setLights(1, 0, 0, 1);
     }
     else if(measureVoltH() > MIN_VOLTAGE && measureVoltL() > MIN_VOLTAGE)
     {
       // E1
-      analogWrite(PIN_LED_R, 255);
-      analogWrite(PIN_LED_G, 0);
-      analogWrite(PIN_LED_B, 0);
-      analogWrite(PIN_LED_Y, 0);
+      setLights(1, 0, 0, 0);
     }
 
     // only shut down if no AC/DC was present within the last 10s
     else if(noSupplyCounter > 2000) {
-      analogWrite(PIN_LED_R, 0);
-      analogWrite(PIN_LED_G, 0);
-      analogWrite(PIN_LED_B, 0);
+      setLights(0, 0, 0, 0);
 
       for(j=0; j<3; j++) {
         delay(300);
-        analogWrite(PIN_LED_R, 255);
+        setLights(1, 0, 0, 0);
         delay(300);
-        analogWrite(PIN_LED_R, 0);
+        setLights(0, 0, 0, 0);
       }
 
       digitalWrite(PIN_SYS_POWER_ON, LOW);
@@ -256,6 +268,7 @@ void loop() {
 }
 
 
+// send debug information via serial
 void printAll() {
   Serial.print("--------------------------------\n");
   Serial.print("AC in: ");
